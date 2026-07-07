@@ -1,0 +1,14 @@
+{
+  "name": "whatsapp-alert-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "express": "^4.19.2",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
