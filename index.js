@@ -1,6 +1,6 @@
 const express = require('express');
 const qrcode = require('qrcode-terminal');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
 const app = express();
 app.use(express.json());
@@ -11,20 +11,12 @@ const DEFAULT_NUMBER = process.env.WHATSAPP_NUMBER; // e.g. 923001234567
 let sock;
 let isReady = false;
 
-// async function connectWhatsApp() {
-//   const { state, saveCreds } = await useMultiFileAuthState('/app/auth');
-//   sock = makeWASocket({ auth: state });
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('/app/auth');
   const { version } = await fetchLatestBaileysVersion();
   console.log('Using WA version:', version);
 
   sock = makeWASocket({ auth: state, version });
-
-  
 
   sock.ev.on('creds.update', saveCreds);
 
