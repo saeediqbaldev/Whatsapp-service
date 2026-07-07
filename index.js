@@ -11,9 +11,20 @@ const DEFAULT_NUMBER = process.env.WHATSAPP_NUMBER; // e.g. 923001234567
 let sock;
 let isReady = false;
 
+// async function connectWhatsApp() {
+//   const { state, saveCreds } = await useMultiFileAuthState('/app/auth');
+//   sock = makeWASocket({ auth: state });
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('/app/auth');
-  sock = makeWASocket({ auth: state });
+  const { version } = await fetchLatestBaileysVersion();
+  console.log('Using WA version:', version);
+
+  sock = makeWASocket({ auth: state, version });
+
+  
 
   sock.ev.on('creds.update', saveCreds);
 
