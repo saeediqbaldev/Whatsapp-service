@@ -3,14 +3,14 @@ const QRCode = require('qrcode');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const ALERT_SECRET   = process.env.ALERT_SECRET;
 const DEFAULT_NUMBER = process.env.WHATSAPP_NUMBER;
 
 let sock;
 let isReady   = false;
-let latestQR  = null; // stores the raw QR string until scanned
+let latestQR  = null;
 
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('/app/auth');
@@ -23,18 +23,15 @@ async function connectWhatsApp() {
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
-
     if (qr) {
-      latestQR = qr; // save for /qr endpoint
+      latestQR = qr;
       console.log('=== NEW QR CODE GENERATED — scan via /qr endpoint or logs ===');
     }
-
     if (connection === 'open') {
       isReady  = true;
-      latestQR = null; // clear QR once connected
+      latestQR = null;
       console.log('✅ WhatsApp connected successfully');
     }
-
     if (connection === 'close') {
       isReady = false;
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -52,9 +49,6 @@ app.get('/health', (req, res) => {
 });
 
 // ─── QR CODE PAGE ─────────────────────────────────────────────────────────────
-// Returns a simple HTML page with the QR code rendered as an image.
-// Protected by the same ALERT_SECRET header OR a query param ?secret=xxx
-// so Loveable can embed it in an iframe or open it directly.
 app.get('/qr', async (req, res) => {
   const secret = req.headers['x-alert-secret'] || req.query.secret;
   if (secret !== ALERT_SECRET) return res.status(401).send('Unauthorized');
@@ -128,20 +122,43 @@ app.get('/qr', async (req, res) => {
   }
 });
 
-// ─── SEND ALERT ───────────────────────────────────────────────────────────────
+// ─── SEND ALERT (text, image+caption, or image+pdf+caption) ──────────────────
 app.post('/alert', async (req, res) => {
   const secret = req.headers['x-alert-secret'];
   if (secret !== ALERT_SECRET) return res.status(401).json({ error: 'unauthorized' });
   if (!isReady) return res.status(503).json({ error: 'whatsapp not connected yet' });
 
-  const { message, number } = req.body;
-  if (!message) return res.status(400).json({ error: 'message is required' });
-
+  const { message, number, image, pdf, caption } = req.body;
   const target = (number || DEFAULT_NUMBER) + '@s.whatsapp.net';
 
   try {
+    // If we have an image, send it with caption
+    if (image) {
+      const imageBuffer = Buffer.from(image, 'base64');
+      await sock.sendMessage(target, {
+        image: imageBuffer,
+        caption: caption || message || ''
+      });
+
+      // If we also have a PDF, send it as a document right after
+      if (pdf) {
+        const pdfBuffer = Buffer.from(pdf, 'base64');
+        await sock.sendMessage(target, {
+          document: pdfBuffer,
+          mimetype: 'application/pdf',
+          fileName: `portfolio-alert-${new Date().toISOString().slice(0,10)}.pdf`,
+          caption: '📄 Full PDF Report'
+        });
+      }
+
+      return res.json({ status: 'sent', type: pdf ? 'image+pdf' : 'image' });
+    }
+
+    // Fallback: plain text message
+    if (!message) return res.status(400).json({ error: 'message or image is required' });
     await sock.sendMessage(target, { text: message });
-    res.json({ status: 'sent' });
+    res.json({ status: 'sent', type: 'text' });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'failed to send' });
